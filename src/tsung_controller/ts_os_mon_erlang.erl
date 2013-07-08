@@ -155,12 +155,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 updatestats(Interval,Mon_Server) ->
     Node = atom_to_list(node()),
-    {Cpu, FreeMem, RecvPackets, SentPackets, Load} = node_data(),
+    {Cpu, FreeMem, RecvPackets, SentPackets, Load, IoRead, IoWrite} = node_data(),
     ts_os_mon:send(Mon_Server,[{sample, {cpu, Node}, Cpu},
                      {sample, {freemem, Node}, FreeMem},
                      {sample, {load, Node}, Load},
                      {sample_counter, {recvpackets, Node}, RecvPackets},
-                     {sample_counter, {sentpackets,  Node}, SentPackets}]),
+                     {sample_counter, {sentpackets,  Node}, SentPackets},
+                     {sample, {ioread, Node}, IoRead},
+		     {sample, {iowrite, Node}, IoWrite}]),
 
     timer:sleep(Interval),
     updatestats(Interval,Mon_Server).
@@ -198,8 +200,8 @@ load_code(Nodes) ->
 %%--------------------------------------------------------------------
 node_data() ->
     {RecvPackets, SentPackets} = get_os_data(packets),
-    {get_os_data(cpu), get_os_data(freemem), RecvPackets, SentPackets, get_os_data(load)}.
-
+    {IoRead, IoWrite} = get_os_data(iostat),
+    {get_os_data(cpu), get_os_data(freemem), RecvPackets, SentPackets, get_os_data(load), IoRead, IoWrite}.
 
 %%--------------------------------------------------------------------
 %% Func: get_os_data/1
@@ -231,6 +233,12 @@ get_os_data(freemem, _OS) ->
     {value,{free_memory,FreeMem}} = lists:keysearch(free_memory, 1, Data),
     %% We use Megabytes
     FreeMem/1048576;
+
+%% Return io statistics for all filesystems in Blocks/seconds
+get_os_data(iostat, {unix, linux}) ->
+    Result = os:cmd("vmstat 1 2 | tail -1"),
+    [_, _, _, _,_, _, _, _, Read, Write | _] = string:tokens(Result, " "),
+    {list_to_integer(Read),list_to_integer(Write)};
 
 %% Return packets sent/received on network interface
 get_os_data(packets, {unix, Val}) ->
