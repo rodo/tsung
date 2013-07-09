@@ -54,19 +54,28 @@ read_config_xmpp_muc_test() ->
     ts_user_server:start([]),
     ?assertMatch({ok, Config}, ts_config:read("./src/test/xmpp-muc.xml",".")).
 
-config_get_session_test() ->
+
+config_get_session_warn_test() ->
     myset_env(),
     ts_user_server:start([]),
     ts_config_server:start_link(["/tmp"]),
+    ok = ts_config_server:read_config("./examples/http_sessions.xml"),
+    {ok, SessionA=#session{userid=1} } = ts_config_server:get_next_session("localhost"),
+    {ok, SessionB=#session{userid=2} } = ts_config_server:get_next_session("localhost"),
+    {ok, SessionC=#session{userid=3} } = ts_config_server:get_next_session("localhost"),
+    {ok, SessionD=#session{userid=4} } = ts_config_server:get_next_session("localhost"),
+    ?assertEqual([4,3,2,1], [SessionA#session.id,SessionB#session.id,SessionC#session.id,SessionD#session.id]).
+
+config_get_session_test() ->
+    myset_env(),
     ok = ts_config_server:read_config("./examples/http_setdynvars.xml"),
-    {ok, Session=#session{userid=1,dump=full} }  = ts_config_server:get_next_session("localhost"),
+    {ok, Session=#session{userid=5,dump=full} }  = ts_config_server:get_next_session("localhost"),
     ?assertEqual(1, Session#session.id).
 
 config_get_session_size_test() ->
     myset_env(),
-    {ok, Session=#session{userid=2} }  = ts_config_server:get_next_session("localhost"),
+    {ok, Session=#session{userid=6} }  = ts_config_server:get_next_session("localhost"),
     ?assertEqual(13, Session#session.size).
-
 
 read_config_badpop_test() ->
     myset_env(),
@@ -82,13 +91,13 @@ read_config_thinkfirst_test() ->
 
 config_minmax_test() ->
     myset_env(),
-    {ok, Session=#session{userid=3} }  = ts_config_server:get_next_session("localhost"),
+    {ok, Session=#session{userid=7} }  = ts_config_server:get_next_session("localhost"),
     Id = Session#session.id,
     ?assertMatch({thinktime,{range,2000,4000}}, ts_config_server:get_req(Id,7)).
 
 config_minmax2_test() ->
     myset_env(),
-    {ok, Session=#session{userid=4} }  = ts_config_server:get_next_session("localhost"),
+    {ok, Session=#session{userid=8} }  = ts_config_server:get_next_session("localhost"),
     Id = Session#session.id,
     {thinktime, Req} = ts_config_server:get_req(Id,7),
     Think=ts_client:set_thinktime(Req),
@@ -100,7 +109,7 @@ config_minmax2_test() ->
 config_thinktime_test() ->
     myset_env(),
     ok = ts_config_server:read_config("./examples/thinks.xml"),
-    {ok, Session=#session{userid=5} }  = ts_config_server:get_next_session("localhost"),
+    {ok, Session=#session{userid=9} }  = ts_config_server:get_next_session("localhost"),
     Id = Session#session.id,
     {thinktime, Req=2000} = ts_config_server:get_req(Id,5),
     {thinktime, 2000} = ts_config_server:get_req(Id,7),
@@ -114,7 +123,7 @@ config_thinktime_test() ->
 config_thinktime2_test() ->
     myset_env(),
     ok = ts_config_server:read_config("./examples/thinks2.xml"),
-    {ok, Session=#session{userid=6} }  = ts_config_server:get_next_session("localhost"),
+    {ok, Session=#session{userid=10} }  = ts_config_server:get_next_session("localhost"),
     Id = Session#session.id,
     {thinktime, Req} = ts_config_server:get_req(Id,5),
     Ref=ts_client:set_thinktime(Req),
@@ -238,6 +247,19 @@ launcher_empty_test() ->
                                                 phase_duration=Duration,
                                                 phase_start = _,
                                                 intensity = Intensity},_},Res).
+
+config_incone_id_exists_test()->
+    ?assertEqual([{1,1}], ts_config_server:incone(1, {1,0})).
+
+config_incone_id_notfound_test()->
+    ?assertEqual([{1,0}], ts_config_server:incone(2, {1,0})).
+
+config_incsess_empty_sessions_test()->
+    ?assertEqual([{2,1}], ts_config_server:incsess([], 2)).
+
+config_incsess_not_empty_test()->
+    ?assertEqual([{4,1},{7,1}], ts_config_server:incsess([{4,1}], 7)).
+
 
 myset_env()->
     myset_env(0).

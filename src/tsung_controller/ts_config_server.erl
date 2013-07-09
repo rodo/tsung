@@ -73,7 +73,8 @@
                 last_beam_id = 0, % last tsung beam id (used to set nodenames)
                 ending_beams = 0, % number of beams with no new users to start
                 lastips,          % store next ip to choose for each client host
-                total_weight      % total weight of client machines
+                total_weight,     % total weight of client machines
+		sessions = []     % sessions already choosen
                }).
 
 %%====================================================================
@@ -278,14 +279,15 @@ handle_call({get_next_session, HostName}, _From, State=#state{users=Users}) ->
     Config = State#state.config,
     {value, Client} = lists:keysearch(HostName, #client.host, Config#config.clients),
     ?DebugF("get new session for ~p~n",[_From]),
-    case choose_session(Config#config.sessions, Config#config.total_popularity) of
+    case choose_session(Config#config.sessions, Config#config.total_popularity, State#state.sessions) of
         {ok, Session=#session{id=Id}} ->
             ?LOGF("Session ~p choosen~n",[Id],?INFO),
+	    NewSessions = incsess(State#state.sessions, Id),
             ts_mon:newclient({Id,?NOW}),
             {IPParam, Server} = get_user_param(Client,Config),
             {reply, {ok, Session#session{client_ip= IPParam, server=Server,userid=Users,
                                          dump=Config#config.dump, seed=Config#config.seed}},
-             State#state{users=Users+1} };
+             State#state{users=Users+1,sessions=NewSessions} };
         Other ->
             {reply, {error, Other}, State}
     end;
@@ -532,19 +534,29 @@ choose_rr(List, Key, _) ->
 
 %%----------------------------------------------------------------------
 %% Func: choose_session/2
-%% Args: List of #session
+%% Args: List of #session, array of session state
 %% Purpose: choose an session randomly
 %% Returns: #session
 %%----------------------------------------------------------------------
-choose_session([Session], _Total) -> %% only one Session
-    {ok, Session};
-choose_session(Sessions,Total) ->
-    choose_session(Sessions, random:uniform() * Total, 0).
+choose_session([Session], _Total) -> %% only debug
+    choose_session(Session, _Total, []).
 
-choose_session([S=#session{popularity=P} | _],Rand,Cur) when Rand =< P+Cur->
+choose_session([Session], _Total, _) -> %% only one Session
+    {ok, Session};
+choose_session(Sessions, Total, SessionsState) ->
+    Index = length(SessionsState) + 1,
+    NbSessions = length(Sessions),
+    case NbSessions > Index of
+	true ->
+	    {ok, lists:nth(Index, Sessions)};
+	false ->
+	    choose_session(Sessions, random:uniform() * Total, 0, SessionsState)
+    end.
+
+choose_session([S=#session{popularity=P} | _],Rand,Cur, _SessionsState) when Rand =< P+Cur->
     {ok, S};
-choose_session([#session{popularity=P} | SList], Rand, Cur) ->
-    choose_session(SList, Rand, Cur+P).
+choose_session([#session{popularity=P} | SList], Rand, Cur, _SessionsState) ->
+    choose_session(SList, Rand, Cur+P, _SessionsState).
 
 
 %%----------------------------------------------------------------------
@@ -857,5 +869,25 @@ get_one_node_per_host([Node | Nodes], Dict) ->
             NewDict = dict:store(Host, Node, Dict),
             get_one_node_per_host(Nodes,NewDict)
     end.
+%%
+%%
+incsess(Sessions, Index)->
+    B = incsess(Sessions, Index, []),
+    case Sessions == B of
+	true ->
+	    lists:merge(B, [{Index,1}]);
+	false ->
+	    B
+    end.   
+incsess([H|T], Index, List) when is_list(T)->
+    lists:merge(incone(Index, H), incsess(T, Index, List));
+incsess([],_Index,List) ->
+    List.
 
-
+incone(Index, H)->
+    case Index == element(1, H) of
+	true ->
+	     [{Index, element(2, H) + 1}];
+	false ->
+	     [H]
+    end.
